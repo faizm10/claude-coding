@@ -82,8 +82,10 @@ export function rowToTask(row: SwebenchRow): EvalTask {
 
 export async function importSwebench(o: { limit: number; difficulty?: string; repos?: string[]; purePython?: boolean }): Promise<Suite> {
   const repos = o.repos ?? (o.purePython ? PURE_PYTHON_REPOS : undefined);
-  const tasks: EvalTask[] = [];
-  for (let offset = 0; tasks.length < o.limit && offset < 500; offset += 100) {
+  // Fetch every matching row, then pick round-robin across repos so a small
+  // suite isn't all Django (the dataset is sorted by repo).
+  const byRepo = new Map<string, SwebenchRow[]>();
+  for (let offset = 0; offset < 500; offset += 100) {
     const url = `${API}?dataset=${encodeURIComponent(DATASET)}&config=default&split=test&offset=${offset}&length=100`;
     const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw new Error(`dataset API ${res.status}: ${await res.text()}`);
@@ -91,10 +93,16 @@ export async function importSwebench(o: { limit: number; difficulty?: string; re
     for (const { row } of page.rows) {
       if (o.difficulty && row.difficulty !== o.difficulty) continue;
       if (repos && !repos.includes(row.repo)) continue;
-      tasks.push(rowToTask(row));
-      if (tasks.length >= o.limit) break;
+      byRepo.set(row.repo, [...(byRepo.get(row.repo) ?? []), row]);
     }
     if (page.rows.length < 100) break;
+  }
+  const tasks: EvalTask[] = [];
+  const queues = [...byRepo.values()];
+  for (let i = 0; tasks.length < o.limit && queues.some((q) => i < q.length); i++) {
+    for (const q of queues) {
+      if (i < q.length && tasks.length < o.limit) tasks.push(rowToTask(q[i]));
+    }
   }
   const filters = [o.difficulty, o.purePython && !o.repos ? "pure-Python repos" : o.repos?.join(",")].filter(Boolean).join(", ");
   return {
