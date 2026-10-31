@@ -8,7 +8,9 @@ export type AgentEvent =
   | { type: "file_change"; path: string }
   | { type: "usage"; inputTokens: number; outputTokens: number; costUsd?: number }
   | { type: "done"; ok: boolean; summary: string; durationMs: number; turns?: number }
-  | { type: "error"; message: string; rateLimited?: boolean };
+  | { type: "error"; message: string; rateLimited?: boolean; resetsAt?: number }
+  /** Plan usage window status (Claude Code reports this; resetsAt is unix seconds). */
+  | { type: "rate_limit"; status: string; window?: string; utilization?: number; resetsAt?: number };
 
 export interface TaskSpec {
   prompt: string;
