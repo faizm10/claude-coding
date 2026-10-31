@@ -57,7 +57,12 @@ export class CodexEngine implements Engine {
     const started = Date.now();
     let lastMessage = "";
     let failed = false;
-    for await (const item of streamProc(cmd.program, cmd.args, { timeoutMs: task.maxMinutes * 60_000, signal })) {
+    for await (const item of streamProc(cmd.program, cmd.args, {
+      timeoutMs: task.maxMinutes * 60_000,
+      signal,
+      // Only the engine's own auth survives; GitHub tokens etc. are stripped.
+      scrub: { keep: ["OPENAI_API_KEY", "CODEX_API_KEY"] },
+    })) {
       if (item.kind === "line") {
         let obj: unknown;
         try {

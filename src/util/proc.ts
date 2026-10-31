@@ -5,6 +5,8 @@ import type { ExecResult } from "../types.js";
 export interface ProcOptions {
   cwd?: string;
   env?: Record<string, string>;
+  /** Start from a secret-free copy of process.env (for agent and repo code). */
+  scrub?: { keep?: string[] };
   timeoutMs?: number;
   input?: string;
   signal?: AbortSignal;
@@ -13,11 +15,33 @@ export interface ProcOptions {
 const MAX_CAPTURE = 2_000_000;
 
 /** Run a program to completion and capture its output (truncated to keep memory bounded). */
+const SECRET_RE = /(^GH_|^GITHUB_|TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|^AWS_|^NPM_AUTH|SESSION)/i;
+
+/**
+ * process.env minus anything that looks like a credential. Agents and the
+ * repo's own test code run with this, so a prompt-injected agent or a
+ * malicious test can't read e.g. the GitHub token used to open PRs.
+ */
+export function scrubbedEnv(keep: string[] = []): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v === undefined) continue;
+    if (SECRET_RE.test(k) && !keep.includes(k)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function childEnv(opts: ProcOptions): NodeJS.ProcessEnv {
+  const base = opts.scrub ? scrubbedEnv(opts.scrub.keep) : process.env;
+  return { ...base, ...opts.env };
+}
+
 export function runProc(program: string, args: string[], opts: ProcOptions = {}): Promise<ExecResult> {
   return new Promise((resolve) => {
     const child = spawn(program, args, {
       cwd: opts.cwd,
-      env: { ...process.env, ...opts.env },
+      env: childEnv(opts),
       stdio: ["pipe", "pipe", "pipe"],
       signal: opts.signal,
     });
@@ -55,7 +79,7 @@ export type StreamItem = { kind: "line"; line: string } | { kind: "exit"; code: 
 export async function* streamProc(program: string, args: string[], opts: ProcOptions = {}): AsyncGenerator<StreamItem> {
   const child = spawn(program, args, {
     cwd: opts.cwd,
-    env: { ...process.env, ...opts.env },
+    env: childEnv(opts),
     stdio: ["pipe", "pipe", "pipe"],
   });
   let stderr = "";
