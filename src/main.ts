@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { createDashboard } from "./dashboard.js";
 import { createEngine, isEngineName } from "./engines/index.js";
 import { loadSuite, runSuite, writeReport } from "./eval.js";
-import { runIssue } from "./pipeline.js";
+import { runIssue, runLocal } from "./pipeline.js";
 import type { SandboxKind } from "./sandbox/index.js";
 import { Store } from "./store.js";
 import { importSwebench } from "./swebench.js";
@@ -16,6 +16,8 @@ const HELP = `👻 ghost: label an issue, wake up to a tested PR.
 
 Usage:
   ghost run <issue-url | owner/repo#N>   Fix one issue now
+  ghost fix <path|git-url|fixture:name> --title "…" [--body "…"]
+                                         Same flow on a local repo, no GitHub issue
   ghost enqueue <issue...>               Add issues to the overnight queue
   ghost worker                           Work the queue (pauses on plan limits)
   ghost watch --repo owner/repo          Poll for labeled issues and fix them
@@ -65,6 +67,8 @@ async function main() {
       "no-prove": { type: "boolean", default: false },
       sandbox: { type: "string", default: "auto" },
       model: { type: "string" },
+      title: { type: "string" },
+      body: { type: "string" },
       repo: { type: "string", multiple: true },
       label: { type: "string", default: "ghost" },
       interval: { type: "string", default: "300" },
@@ -92,6 +96,15 @@ async function main() {
       const store = new Store();
       const r = await runIssue(url, { ...runOpts, engine: createEngine(o.engine), store, log });
       log(`\nrun #${r.runId}: ${r.outcome}${r.prUrl ? ` → ${r.prUrl}` : ""}   (details: ghost serve)`);
+      process.exitCode = r.outcome === "passed" ? 0 : 1;
+      return;
+    }
+    case "fix": {
+      const [source] = positionals;
+      if (!source || !o.title) throw new Error('usage: ghost fix <path|git-url|fixture:name> --title "bug summary" [--body "details"]');
+      if (!isEngineName(o.engine!)) throw new Error(`unknown engine "${o.engine}"`);
+      const r = await runLocal(source, { title: o.title, body: o.body ?? "" }, { ...runOpts, openPr: false, engine: createEngine(o.engine), store: new Store(), log });
+      log(`\nrun #${r.runId}: ${r.outcome}   (details: ghost serve)`);
       process.exitCode = r.outcome === "passed" ? 0 : 1;
       return;
     }
