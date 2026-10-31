@@ -15,6 +15,8 @@ export interface DockerOptions {
   cpus?: string;
   /** Env vars passed into the container (e.g. CLAUDE_CODE_OAUTH_TOKEN). Never pass GitHub write tokens. */
   env?: Record<string, string>;
+  /** Ports to publish on 127.0.0.1 (for the browser proof step). */
+  ports?: number[];
 }
 
 /**
@@ -38,6 +40,7 @@ export class DockerSandbox implements Sandbox {
     await runProc("mkdir", ["-p", hostWorkdir]);
     const name = `ghost-${randomUUID().slice(0, 8)}`;
     const envArgs = Object.entries(opts.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+    const portArgs = (opts.ports ?? []).flatMap((p) => ["-p", `127.0.0.1:${p}:${p}`]);
     const res = await runProc("docker", [
       "run", "-d", "--name", name,
       "--network", opts.network ?? "bridge",
@@ -47,6 +50,7 @@ export class DockerSandbox implements Sandbox {
       "-v", `${hostWorkdir}:/work`,
       "-w", "/work",
       ...envArgs,
+      ...portArgs,
       opts.image ?? DEFAULT_IMAGE,
       "sleep", "infinity",
     ]);

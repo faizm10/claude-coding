@@ -32,6 +32,8 @@ export async function checkoutRepo(sandbox: Sandbox, source: string, ref?: strin
       if (retry.code !== 0) throw new Error(`git checkout ${ref} failed: ${retry.stderr}`);
     }
   }
+  // Keep build artifacts and the proof script out of diffs and commits.
+  await runProc("bash", ["-c", `printf 'node_modules/\n.venv/\n__pycache__/\n.pytest_cache/\nghost-proof/\n' >> ${shq(sandbox.hostWorkdir)}/.git/info/exclude`]);
   // Commits made by the harness (never pushed with these identities).
   await git(["config", "user.email", "ghost-engineer@users.noreply.github.com"]);
   await git(["config", "user.name", "Ghost Engineer"]);

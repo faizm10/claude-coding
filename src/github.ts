@@ -99,3 +99,13 @@ export async function uploadMedia(owner: string, repo: string, path: string, bas
   });
   return `https://github.com/${owner}/${repo}/blob/${branch}/${path}?raw=true`;
 }
+
+/** Read a file from the default branch without cloning (undefined if missing). */
+export async function fetchRepoFile(owner: string, repo: string, path: string): Promise<string | undefined> {
+  try {
+    const f = await ghApi(`repos/${owner}/${repo}/contents/${path}`);
+    return Buffer.from(f.content, "base64").toString("utf8");
+  } catch {
+    return undefined;
+  }
+}
