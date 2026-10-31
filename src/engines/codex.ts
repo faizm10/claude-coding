@@ -60,6 +60,8 @@ export class CodexEngine implements Engine {
     for await (const item of streamProc(cmd.program, cmd.args, {
       timeoutMs: task.maxMinutes * 60_000,
       signal,
+      // Local sandboxes: the repo's .venv goes first on PATH for the agent's shell too.
+      env: sandbox.trust === "local" ? sandbox.env() : undefined,
       // Only the engine's own auth survives; GitHub tokens etc. are stripped.
       scrub: { keep: ["OPENAI_API_KEY", "CODEX_API_KEY"] },
     })) {

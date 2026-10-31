@@ -4,6 +4,22 @@ import type { EvalTask, Suite } from "./eval.js";
 const API = "https://datasets-server.huggingface.co/rows";
 const DATASET = "princeton-nlp/SWE-bench_Verified";
 
+/**
+ * Python version per repo/version, following the SWE-bench harness specs
+ * (approximate; tasks whose interpreter can't be provisioned end as env_setup).
+ */
+export function pythonFor(repo: string, version?: string): string {
+  const v = Number.parseFloat(version ?? "0");
+  if (repo === "django/django") return v >= 5 ? "3.11" : v >= 4 ? "3.9" : "3.8";
+  if (repo === "scikit-learn/scikit-learn") return v >= 1 ? "3.9" : "3.8";
+  if (repo === "pydata/xarray") return "3.10";
+  if (repo === "matplotlib/matplotlib") return "3.11";
+  return "3.9";
+}
+
+/** Repos that install without compiling C extensions; best for a first benchmark. */
+export const PURE_PYTHON_REPOS = ["django/django", "sympy/sympy", "pytest-dev/pytest", "sphinx-doc/sphinx", "psf/requests", "pylint-dev/pylint", "pallets/flask", "mwaskom/seaborn", "pydata/xarray"];
+
 export interface SwebenchRow {
   repo: string;
   instance_id: string;
@@ -13,6 +29,7 @@ export interface SwebenchRow {
   FAIL_TO_PASS: string;
   PASS_TO_PASS: string;
   difficulty?: string;
+  version?: string;
 }
 
 const shellQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -53,7 +70,8 @@ export function rowToTask(row: SwebenchRow): EvalTask {
     baseCommit: row.base_commit,
     title: title.slice(0, 200),
     body: rest.join("\n").trim() || title,
-    install: "python -m pip install -q -e .",
+    // Isolated per-task venv with the interpreter this repo/version expects.
+    install: `uv venv -q --allow-existing -p ${pythonFor(row.repo, row.version)} .venv && uv pip install -q -p .venv -e . pytest`,
     test,
     testPatch: row.test_patch,
     grade,
@@ -62,7 +80,8 @@ export function rowToTask(row: SwebenchRow): EvalTask {
   };
 }
 
-export async function importSwebench(o: { limit: number; difficulty?: string; repos?: string[] }): Promise<Suite> {
+export async function importSwebench(o: { limit: number; difficulty?: string; repos?: string[]; purePython?: boolean }): Promise<Suite> {
+  const repos = o.repos ?? (o.purePython ? PURE_PYTHON_REPOS : undefined);
   const tasks: EvalTask[] = [];
   for (let offset = 0; tasks.length < o.limit && offset < 500; offset += 100) {
     const url = `${API}?dataset=${encodeURIComponent(DATASET)}&config=default&split=test&offset=${offset}&length=100`;
@@ -71,13 +90,13 @@ export async function importSwebench(o: { limit: number; difficulty?: string; re
     const page = (await res.json()) as { rows: { row: SwebenchRow }[] };
     for (const { row } of page.rows) {
       if (o.difficulty && row.difficulty !== o.difficulty) continue;
-      if (o.repos && !o.repos.includes(row.repo)) continue;
+      if (repos && !repos.includes(row.repo)) continue;
       tasks.push(rowToTask(row));
       if (tasks.length >= o.limit) break;
     }
     if (page.rows.length < 100) break;
   }
-  const filters = [o.difficulty, o.repos?.join(",")].filter(Boolean).join(", ");
+  const filters = [o.difficulty, o.purePython && !o.repos ? "pure-Python repos" : o.repos?.join(",")].filter(Boolean).join(", ");
   return {
     name: `swebench-verified-${tasks.length}`,
     description: `${tasks.length} tasks from SWE-bench Verified${filters ? ` (${filters})` : ""}. Python environments vary per repo; env_setup failures are reported separately.`,

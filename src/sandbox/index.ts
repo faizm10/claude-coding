@@ -25,7 +25,9 @@ export async function createSandbox(kind: SandboxKind = "auto", docker: DockerOp
  * mounted workdir, so the container never needs Git credentials.
  */
 export async function checkoutRepo(sandbox: Sandbox, source: string, ref?: string): Promise<string> {
-  const clone = await runProc("git", ["clone", "--quiet", "--no-tags", source, sandbox.hostWorkdir], { timeoutMs: 10 * 60_000 });
+  // Partial clone for remote repos: big histories (django, sympy) download in seconds.
+  const partial = /^https?:\/\//.test(source) ? ["--filter=blob:none"] : [];
+  const clone = await runProc("git", ["clone", "--quiet", "--no-tags", ...partial, source, sandbox.hostWorkdir], { timeoutMs: 10 * 60_000 });
   if (clone.code !== 0) throw new Error(`git clone failed: ${clone.stderr}`);
   const git = (args: string[]) => runProc("git", ["-C", sandbox.hostWorkdir, ...args]);
   if (ref) {

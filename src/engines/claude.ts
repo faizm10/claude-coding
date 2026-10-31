@@ -81,6 +81,8 @@ export class ClaudeCodeEngine implements Engine {
       cwd: sandbox.trust === "local" ? sandbox.hostWorkdir : undefined,
       timeoutMs: task.maxMinutes * 60_000,
       signal,
+      // Local sandboxes: the repo's .venv goes first on PATH for the agent's shell too.
+      env: sandbox.trust === "local" ? sandbox.env() : undefined,
       // Only the engine's own auth survives; GitHub tokens etc. are stripped.
       scrub: { keep: ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"] },
     })) {

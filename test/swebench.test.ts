@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rowToTask } from "../src/swebench.js";
+import { pythonFor, rowToTask } from "../src/swebench.js";
 
 const base = {
   instance_id: "x__y-1",
@@ -40,5 +40,15 @@ describe("rowToTask", () => {
       FAIL_TO_PASS: JSON.stringify(["test_a", "test_b"]),
     });
     expect(t.grade).toBe("python -m pytest -q -p no:cacheprovider sympy/core/tests/test_basic.py -k 'test_a or test_b'");
+  });
+});
+
+describe("python versions", () => {
+  it("picks interpreters per repo/version and installs into an isolated venv", () => {
+    expect(pythonFor("django/django", "4.2")).toBe("3.9");
+    expect(pythonFor("django/django", "5.0")).toBe("3.11");
+    expect(pythonFor("sympy/sympy", "1.12")).toBe("3.9");
+    const t = rowToTask({ ...base, repo: "django/django", version: "5.0", test_patch: "", FAIL_TO_PASS: "[]" });
+    expect(t.install).toContain("uv venv -q --allow-existing -p 3.11 .venv");
   });
 });

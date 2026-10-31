@@ -79,6 +79,7 @@ async function main() {
       limit: { type: "string" },
       resume: { type: "boolean", default: false },
       difficulty: { type: "string" },
+      "pure-python": { type: "boolean", default: false },
       out: { type: "string" },
       port: { type: "string", default: "4545" },
       help: { type: "boolean", short: "h", default: false },
@@ -148,7 +149,7 @@ async function main() {
       return;
     }
     case "import-swebench": {
-      const suite = await importSwebench({ limit: Number(o.limit ?? 50), difficulty: o.difficulty, repos: o.repo });
+      const suite = await importSwebench({ limit: Number(o.limit ?? 50), difficulty: o.difficulty, repos: o.repo, purePython: o["pure-python"] });
       const out = o.out ?? `suites/${suite.name}.json`;
       await writeFile(out, JSON.stringify(suite, null, 2));
       log(`wrote ${suite.tasks.length} tasks to ${out}`);

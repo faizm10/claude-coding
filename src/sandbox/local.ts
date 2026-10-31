@@ -23,10 +23,14 @@ export class LocalSandbox implements Sandbox {
     return new LocalSandbox(join(root, "repo"));
   }
 
+  env(): Record<string, string> {
+    return { PATH: `${this.hostWorkdir}/.venv/bin:${process.env.PATH ?? ""}` };
+  }
+
   exec(command: string, opts: { timeoutMs?: number; env?: Record<string, string> } = {}): Promise<ExecResult> {
     // Non-login shell: inherit the caller's PATH/toolchain instead of re-reading profiles.
     // Repo code (tests, installs) never sees the host's credentials.
-    return runProc("bash", ["-c", command], { cwd: this.hostWorkdir, timeoutMs: opts.timeoutMs, env: opts.env, scrub: {} });
+    return runProc("bash", ["-c", command], { cwd: this.hostWorkdir, timeoutMs: opts.timeoutMs, env: { ...this.env(), ...opts.env }, scrub: {} });
   }
 
   command(program: string, args: string[]) {

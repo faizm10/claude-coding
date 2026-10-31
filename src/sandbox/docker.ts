@@ -58,15 +58,20 @@ export class DockerSandbox implements Sandbox {
     return new DockerSandbox(hostWorkdir, name);
   }
 
+  env(): Record<string, string> {
+    return { PATH: "/work/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" };
+  }
+
   exec(command: string, opts: { timeoutMs?: number; env?: Record<string, string> } = {}): Promise<ExecResult> {
-    const envArgs = Object.entries(opts.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+    const envArgs = Object.entries({ ...this.env(), ...opts.env }).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
     return runProc("docker", ["exec", ...envArgs, "-w", "/work", this.container, "bash", "-lc", command], {
       timeoutMs: opts.timeoutMs,
     });
   }
 
   command(program: string, args: string[]) {
-    return { program: "docker", args: ["exec", "-i", "-w", "/work", this.container, program, ...args] };
+    const envArgs = Object.entries(this.env()).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+    return { program: "docker", args: ["exec", "-i", ...envArgs, "-w", "/work", this.container, program, ...args] };
   }
 
   async dispose() {

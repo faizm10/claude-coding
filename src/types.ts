@@ -28,6 +28,8 @@ export interface Sandbox {
   readonly hostWorkdir: string;
   readonly trust: "isolated" | "local";
   exec(command: string, opts?: { timeoutMs?: number; env?: Record<string, string> }): Promise<ExecResult>;
+  /** Extra env for anything running against the repo (e.g. the repo's .venv first on PATH). */
+  env(): Record<string, string>;
   /** Wrap a program invocation so it runs inside the sandbox. */
   command(program: string, args: string[]): { program: string; args: string[] };
   dispose(): Promise<void>;
