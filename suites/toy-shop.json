@@ -1,0 +1,36 @@
+{
+  "name": "toy-shop",
+  "description": "Three planted bugs in a tiny JS library. A smoke test for the harness, not a real benchmark.",
+  "tasks": [
+    {
+      "id": "toy-shop/cart-total",
+      "repo": "fixture:toy-shop",
+      "title": "Cart total ignores quantity",
+      "body": "total([{ price: 10, quantity: 3 }]) returns 10 but it should be 30. Quantity isn't multiplied in.",
+      "hiddenTests": {
+        "test-hidden/cart.test.js": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { total } from '../src/cart.js';\ntest('total multiplies quantity', () => {\n  assert.equal(total([{ price: 10, quantity: 3 }, { price: 2, quantity: 1 }]), 32);\n  assert.equal(total([]), 0);\n});\n"
+      },
+      "grade": "node --test test-hidden/cart.test.js"
+    },
+    {
+      "id": "toy-shop/discount-percent",
+      "repo": "fixture:toy-shop",
+      "title": "applyDiscount subtracts the percent as a flat amount",
+      "body": "applyDiscount(200, 25) returns 175. A 25% discount on 200 should be 150.",
+      "hiddenTests": {
+        "test-hidden/discount.test.js": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { applyDiscount } from '../src/discount.js';\ntest('percentage discount', () => {\n  assert.equal(applyDiscount(200, 25), 150);\n  assert.equal(applyDiscount(80, 0), 80);\n  assert.equal(applyDiscount(80, 100), 0);\n  assert.throws(() => applyDiscount(1, -5), RangeError);\n});\n"
+      },
+      "grade": "node --test test-hidden/discount.test.js"
+    },
+    {
+      "id": "toy-shop/slug-case",
+      "repo": "fixture:toy-shop",
+      "title": "slugify keeps uppercase letters",
+      "body": "slugify('Hello,  World!') returns 'Hello-World' but slugs must be lowercase: 'hello-world'.",
+      "hiddenTests": {
+        "test-hidden/slug.test.js": "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { slugify } from '../src/slug.js';\ntest('lowercase slugs', () => {\n  assert.equal(slugify('Hello,  World!'), 'hello-world');\n  assert.equal(slugify('  ABC def '), 'abc-def');\n});\n"
+      },
+      "grade": "node --test test-hidden/slug.test.js"
+    }
+  ]
+}
