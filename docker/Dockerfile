@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
+# uv provisions per-task Python versions and venvs (SWE-bench tasks).
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
 # Run as an unprivileged user; the repo is mounted at /work.
 RUN useradd -m ghost && mkdir -p /work && chown ghost /work
 USER ghost

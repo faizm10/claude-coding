@@ -20,7 +20,8 @@
     "prepare": "npm run build",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sandbox:build": "docker build -t ghost-engineer-sandbox:latest docker/"
   },
   "license": "MIT",
   "devDependencies": {
