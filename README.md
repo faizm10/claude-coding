@@ -2,6 +2,10 @@
 
 **Label a GitHub issue `ghost`. Wake up to a tested pull request, with a narrated video of the fix working.**
 
+![Before/after proof video recorded by Ghost Engineer: the buggy counter on the left, the fix on the right](docs/demo.gif)
+
+<sub>A real proof video recorded by the agent (Codex) after fixing `fixtures/todo-app`. Left: the original code says "0 items left" with three open todos. Right: the fix. The MP4 version has a spoken voiceover.</sub>
+
 Ghost Engineer is an autonomous bug-fixing agent that runs on your **Claude Code** or **Codex** subscription (no API keys). It reproduces the bug with a failing test, fixes it, proves the fix with a **test-first gate**, records a browser walkthrough with voiceover, and opens a draft PR. It also benchmarks **Claude Code against Codex** on the same tasks.
 
 ```
@@ -18,7 +22,8 @@ test-first gate:  original code + new test  → must FAIL
                   full change               → whole suite must PASS
    │
    ▼
-proof: agent writes a Playwright walkthrough → video → TTS narration → MP4 + GIF
+proof: agent writes a Playwright walkthrough, recorded on the original code
+       AND on the fix → BEFORE | AFTER split screen → TTS narration → MP4 + GIF
    │
    ▼
 draft PR: summary · before/after test evidence · inline GIF · narrated MP4 link
@@ -36,7 +41,9 @@ Smoke suite (`suites/toy-shop.json`, three planted bugs), run through the full h
 | Claude Code | 3/3 | 100% | 0.4 min | ~115k |
 | Codex | 3/3 | 100% | 0.3 min | ~106k |
 
-This is a harness smoke test, not a benchmark. The real benchmark is **SWE-bench Verified**: `ghost import-swebench` pulls real issues from projects like Django and Astropy, graded by their hidden `FAIL_TO_PASS` tests.
+Full flow with video (`ghost fix fixture:todo-app`): **Claude Code and Codex both passed the gate and produced a narrated before/after video**, in about 1 minute each.
+
+These are harness smoke tests, not a benchmark. The real benchmark is **SWE-bench Verified**: `ghost import-swebench` pulls real issues from projects like Django and Astropy, graded by their hidden `FAIL_TO_PASS` tests.
 
 ## Why it's built this way
 
@@ -49,6 +56,7 @@ This is a harness smoke test, not a benchmark. The real benchmark is **SWE-bench
   - The agent and the repo's own test code run with a **scrubbed environment**: GitHub tokens and other credentials are removed, which was verified with a canary token.
   - With Docker, each job gets its own container: unprivileged user, resource limits, `no-new-privileges`. The container never holds git credentials, because cloning and pushing happen on the host.
   - PRs open as **drafts** with an AI disclosure. Nothing auto-merges.
+- **Isolated Python.** SWE-bench tasks get their own `uv` virtualenv with the Python version each repo/version expects. The sandbox puts `.venv/bin` first on PATH for the agent and the repo's commands, and your system Python is never touched.
 - **Observable.** Every tool call, file edit, token count and plan-window update is stored in SQLite and shown in the dashboard.
 
 ## Quick start
@@ -60,6 +68,10 @@ ghost doctor                               # checks claude, codex, gh, docker, f
 # Benchmark both engines on the smoke suite (about 1 minute)
 ghost eval suites/toy-shop.json --engines claude,codex
 
+# Fix a bug in a local repo from a plain-text description (no GitHub needed)
+ghost fix fixture:todo-app --engine claude --title "Items-left counter is wrong" \
+  --body "Tick one of three todos: footer says 1 item left, should be 2"
+
 # Fix a real issue (dry run: gate only, no PR)
 ghost run owner/repo#123 --engine claude
 
@@ -69,9 +81,11 @@ ghost run owner/repo#123 --engine codex --pr
 # Overnight mode: poll for `ghost`-labeled issues and work the queue
 ghost watch --repo owner/repo --engines claude --pr
 
-# Real benchmark
-ghost import-swebench --limit 50 --difficulty "<15 min fix"
-ghost eval suites/swebench-verified-50.json --engines claude,codex --resume
+# Real benchmark: 20 easy SWE-bench Verified tasks across 8 repos (included).
+# This runs other projects' install and test code, so use Docker:
+npm run sandbox:build
+ghost eval suites/swebench-easy-20.json --engines claude,codex --sandbox docker --resume
+# or build your own: ghost import-swebench --limit 50 --difficulty "<15 min fix" --pure-python
 
 ghost serve    # dashboard at http://127.0.0.1:4545
 ```
@@ -121,7 +135,9 @@ templates/       GitHub Actions workflow for target repos
 
 ## Roadmap
 
-- [ ] Run SWE-bench Verified (50 tasks) on both engines and publish the cost/quality chart
+- [x] Before/after split-screen proof videos with narration
+- [x] SWE-bench Verified importer + isolated Python environments
+- [ ] Run `suites/swebench-easy-20.json` on both engines (in Docker) and publish the cost/quality chart
 - [ ] Best-of-N attempts with a judge agent
 - [ ] Learn from review comments on rejected PRs
 - [ ] Slack/Discord notification with the proof video
