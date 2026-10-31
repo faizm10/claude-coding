@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { runGate, type GateResult } from "./gate.js";
@@ -6,7 +6,7 @@ import { canPush, createPullRequest, ensureFork, fetchIssue, fetchRepoFile, uplo
 import { fileBase64, narrate, narrationText, recordProof, renderMedia, startApp, waitForUrl } from "./proof.js";
 import { fixPrompt, parseOutcome, proofPrompt, type IssueInput } from "./prompts.js";
 import { detectRepoConfig, type RepoConfig } from "./repo-config.js";
-import { checkoutRepo, createSandbox, hostGit, type SandboxKind } from "./sandbox/index.js";
+import { checkoutRepo, createSandbox, hostGit, resolveSource, type SandboxKind } from "./sandbox/index.js";
 import { ghostHome, type Store } from "./store.js";
 import type { AgentEvent, Engine, Issue, Sandbox } from "./types.js";
 import { runProc } from "./util/proc.js";
@@ -227,35 +227,42 @@ export interface IssueRunResult extends SolveResult {
   prUrl?: string;
 }
 
-/** Full flow for one GitHub issue. */
-export async function runIssue(issueUrl: string, opts: IssueRunOptions): Promise<IssueRunResult> {
-  const log = opts.log ?? (() => {});
+/** Proof-video port to publish for Docker (it can't be added after the container starts). */
+function provePorts(rawConfig: string | undefined, prove: boolean | undefined): number[] {
+  if (prove === false || !rawConfig) return [];
+  try {
+    const url: string | undefined = JSON.parse(rawConfig).prove?.url;
+    return url ? [Number(new URL(url).port || 80)] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Shared flow after triage: sandbox → solve → proof → (optional) PR.
+ * `github` is present for real issues and enables opening a PR.
+ */
+async function execute(o: {
+  runId: number;
+  started: number;
+  source: string;
+  ref?: string;
+  issue: IssueInput & { ref: string };
+  ports: number[];
+  github?: Issue;
+  opts: IssueRunOptions;
+}): Promise<IssueRunResult> {
+  const { runId, started, opts } = o;
   const { store, engine } = opts;
-  const runId = store.startRun("issue", issueUrl, engine.name);
-  const started = Date.now();
+  const log = opts.log ?? (() => {});
   let sandbox: Sandbox | undefined;
   try {
-    store.setPhase(runId, "triage");
-    const issue = await fetchIssue(issueUrl);
-    const ref = `${issue.owner}/${issue.repo}#${issue.number}`;
-    log(`👻 ${ref}: ${issue.title}`);
-    const reject = issue.state !== "open" ? "issue is closed" : opts.requireLabel && !issue.labels.includes(opts.requireLabel) ? `missing label "${opts.requireLabel}"` : undefined;
-    if (reject) {
-      store.finish(runId, "skipped", { outcome: "triage_rejected", summary: reject, duration_ms: Date.now() - started });
-      return { runId, outcome: "triage_rejected", summary: reject };
-    }
-
     store.setPhase(runId, "checkout");
-    // Docker can't publish ports after start, so read the proof URL's port up front.
-    const remoteCfg = await fetchRepoFile(issue.owner, issue.repo, ".ghost.json");
-    const proveUrl: string | undefined = remoteCfg ? JSON.parse(remoteCfg).prove?.url : undefined;
-    const ports = opts.prove !== false && proveUrl ? [Number(new URL(proveUrl).port || 80)] : [];
-    sandbox = await createSandbox(opts.sandboxKind, { env: opts.dockerEnv, ports });
-    const baseSha = await checkoutRepo(sandbox, issue.cloneUrl, issue.defaultBranch);
+    sandbox = await createSandbox(opts.sandboxKind, { env: opts.dockerEnv, ports: o.ports });
+    const baseSha = await checkoutRepo(sandbox, o.source, o.ref);
     const cfg = detectRepoConfig(sandbox.hostWorkdir);
-    const issueInput = { title: issue.title, body: issue.body, ref };
 
-    const result = await solve({ engine, store, runId, sandbox, baseSha, issue: issueInput, cfg, model: opts.model, log });
+    const result = await solve({ engine, store, runId, sandbox, baseSha, issue: o.issue, cfg, model: opts.model, log });
     log(`  outcome: ${result.outcome}${result.summary ? ` (${clip(result.summary, 160)})` : ""}`);
     if (result.outcome !== "passed" || !result.gate) {
       const status = result.outcome === "agent_skipped" ? "skipped" : "failed";
@@ -263,14 +270,15 @@ export async function runIssue(issueUrl: string, opts: IssueRunOptions): Promise
       return { runId, ...result };
     }
 
-    const media = opts.prove === false ? undefined : await prove({ engine, store, runId, sandbox, issue: issueInput, cfg, summary: result.summary, gate: result.gate, model: opts.model, log });
+    const media = opts.prove === false ? undefined : await prove({ engine, store, runId, sandbox, issue: o.issue, cfg, summary: result.summary, gate: result.gate, model: opts.model, log });
+    if (media?.mp4) log(`  🎬 video: ${media.mp4}`);
 
     let prUrl: string | undefined;
-    if (opts.openPr) {
-      prUrl = await openPr({ sandbox, issue, engine: engine.name, runId, summary: result.summary, gate: result.gate, media, draft: opts.draft ?? true, store, log });
+    if (opts.openPr && o.github) {
+      prUrl = await openPr({ sandbox, issue: o.github, engine: engine.name, runId, summary: result.summary, gate: result.gate, media, draft: opts.draft ?? true, store, log });
       log(`  ✅ PR: ${prUrl}`);
     } else {
-      log("  ✅ gate passed (dry run: no PR opened; pass --pr to open one)");
+      log(`  ✅ gate passed${o.github ? " (dry run: pass --pr to open a PR)" : ""}`);
     }
     store.finish(runId, "succeeded", { outcome: "passed", summary: result.summary, duration_ms: Date.now() - started });
     return { runId, ...result, prUrl };
@@ -283,6 +291,46 @@ export async function runIssue(issueUrl: string, opts: IssueRunOptions): Promise
   } finally {
     await sandbox?.dispose();
   }
+}
+
+/** Full flow for one GitHub issue. */
+export async function runIssue(issueUrl: string, opts: IssueRunOptions): Promise<IssueRunResult> {
+  const log = opts.log ?? (() => {});
+  const runId = opts.store.startRun("issue", issueUrl, opts.engine.name);
+  const started = Date.now();
+  let issue: Issue;
+  try {
+    opts.store.setPhase(runId, "triage");
+    issue = await fetchIssue(issueUrl);
+  } catch (err) {
+    const message = String(err instanceof Error ? err.message : err);
+    opts.store.finish(runId, "failed", { outcome: "engine_error", summary: clip(message, 500), duration_ms: Date.now() - started });
+    log(`  ✖ ${message}`);
+    return { runId, outcome: "engine_error", summary: message };
+  }
+  const ref = `${issue.owner}/${issue.repo}#${issue.number}`;
+  log(`👻 ${ref}: ${issue.title}`);
+  const reject = issue.state !== "open" ? "issue is closed" : opts.requireLabel && !issue.labels.includes(opts.requireLabel) ? `missing label "${opts.requireLabel}"` : undefined;
+  if (reject) {
+    opts.store.finish(runId, "skipped", { outcome: "triage_rejected", summary: reject, duration_ms: Date.now() - started });
+    return { runId, outcome: "triage_rejected", summary: reject };
+  }
+  const ports = provePorts(await fetchRepoFile(issue.owner, issue.repo, ".ghost.json"), opts.prove);
+  return execute({ runId, started, source: issue.cloneUrl, ref: issue.defaultBranch, issue: { title: issue.title, body: issue.body, ref }, ports, github: issue, opts });
+}
+
+/**
+ * Same flow for a local path, git URL or `fixture:<name>`, with the bug
+ * described in plain text. No GitHub issue needed and no PR is opened.
+ */
+export async function runLocal(source: string, bug: { title: string; body: string }, opts: IssueRunOptions): Promise<IssueRunResult> {
+  const log = opts.log ?? (() => {});
+  const resolved = await resolveSource(source);
+  const runId = opts.store.startRun("issue", `local:${source}`, opts.engine.name);
+  log(`👻 ${source}: ${bug.title}`);
+  const cfgFile = join(resolved, ".ghost.json");
+  const ports = provePorts(existsSync(cfgFile) ? readFileSync(cfgFile, "utf8") : undefined, opts.prove);
+  return execute({ runId, started: Date.now(), source: resolved, issue: { ...bug, ref: source }, ports, opts });
 }
 
 export type { AgentEvent };

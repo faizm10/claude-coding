@@ -1,3 +1,7 @@
+import { cp, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Sandbox } from "../types.js";
 import { runProc, shq } from "../util/proc.js";
 import { DockerSandbox, type DockerOptions } from "./docker.js";
@@ -46,3 +50,21 @@ export async function hostGit(sandbox: Sandbox, args: string[], input?: string) 
 }
 
 export { shq };
+
+const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/**
+ * Turn `fixture:<name>` into a throwaway git repo (so it can be cloned like any
+ * other source); local paths are made absolute; URLs pass through.
+ */
+export async function resolveSource(source: string): Promise<string> {
+  if (!source.startsWith("fixture:")) return /^[\w+.-]+:\/\//.test(source) || source.startsWith("git@") ? source : resolve(source);
+  const name = source.slice("fixture:".length);
+  const dir = await mkdtemp(join(tmpdir(), `ghost-fixture-${name}-`));
+  await cp(join(PKG_ROOT, "fixtures", name), dir, { recursive: true });
+  const git = (...args: string[]) => runProc("git", ["-C", dir, ...args]);
+  await git("init", "-q", "-b", "main");
+  await git("add", "-A");
+  await git("-c", "user.email=fixture@ghost", "-c", "user.name=fixture", "commit", "-qm", "fixture");
+  return dir;
+}

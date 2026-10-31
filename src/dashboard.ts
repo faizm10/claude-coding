@@ -39,7 +39,7 @@ export function runsPage(store: Store): string {
   const rows = runs
     .map(
       (r) => `<tr><td><a href="/runs/${r.id}">#${r.id}</a></td><td>${STATUS_ICON[r.status] ?? ""} ${esc(r.outcome ?? r.phase)}</td>
-<td>${r.kind === "issue" ? `<a href="${esc(r.target)}">${esc(r.target.replace("https://github.com/", ""))}</a>` : esc(r.target)}</td>
+<td>${r.target.startsWith("http") ? `<a href="${esc(r.target)}">${esc(r.target.replace("https://github.com/", ""))}</a>` : esc(r.target)}</td>
 <td>${esc(r.engine)}</td><td>${fmtMin(r.duration_ms)}</td><td>${fmtTok(r)}</td>
 <td>${r.pr_url ? `<a href="${esc(r.pr_url)}">PR</a>` : ""}</td><td class="muted">${esc(r.created_at)}</td></tr>`,
     )
@@ -74,7 +74,7 @@ export function runPage(store: Store, id: number): string | undefined {
   return layout(
     `Run #${id}`,
     `<h1>${STATUS_ICON[r.status] ?? ""} Run #${id}: ${esc(r.outcome ?? r.phase)}</h1>
-<p class="muted">${esc(r.kind)} · ${esc(r.engine)} · ${r.kind === "issue" ? `<a href="${esc(r.target)}">${esc(r.target)}</a>` : esc(r.target)} ${r.pr_url ? `· <a href="${esc(r.pr_url)}">Pull request</a>` : ""}</p>
+<p class="muted">${esc(r.kind)} · ${esc(r.engine)} · ${r.target.startsWith("http") ? `<a href="${esc(r.target)}">${esc(r.target)}</a>` : esc(r.target)} ${r.pr_url ? `· <a href="${esc(r.pr_url)}">Pull request</a>` : ""}</p>
 <div class="grid">
   <div class="card stat"><b>${fmtMin(r.duration_ms)}</b><span class="muted">wall time</span></div>
   <div class="card stat"><b>${fmtTok(r)}</b><span class="muted">tokens</span></div>

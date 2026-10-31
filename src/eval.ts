@@ -1,11 +1,9 @@
-import { cp, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { createEngine } from "./engines/index.js";
 import { solve, type Logger, type Outcome } from "./pipeline.js";
 import { detectRepoConfig } from "./repo-config.js";
-import { checkoutRepo, createSandbox, hostGit, type SandboxKind } from "./sandbox/index.js";
+import { checkoutRepo, createSandbox, hostGit, resolveSource, type SandboxKind } from "./sandbox/index.js";
 import { ghostHome, type RunRow, type Store } from "./store.js";
 import type { Engine, EngineName } from "./types.js";
 import { runProc } from "./util/proc.js";
@@ -39,21 +37,8 @@ export interface Suite {
 
 export type EvalOutcome = Outcome | "resolved" | "wrong_fix";
 
-const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-
 export async function loadSuite(path: string): Promise<Suite> {
   return JSON.parse(await readFile(path, "utf8")) as Suite;
-}
-
-/** Turn a fixture folder into a throwaway git repo so it can be cloned like any other. */
-async function materializeFixture(name: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), `ghost-fixture-${name}-`));
-  await cp(join(PKG_ROOT, "fixtures", name), dir, { recursive: true });
-  const git = (...args: string[]) => runProc("git", ["-C", dir, ...args]);
-  await git("init", "-q", "-b", "main");
-  await git("add", "-A");
-  await git("-c", "user.email=fixture@ghost", "-c", "user.name=fixture", "commit", "-qm", "fixture");
-  return dir;
 }
 
 /** Write hidden tests onto the agent's final code and run the grader. */
@@ -83,7 +68,7 @@ export async function runTask(o: { task: EvalTask; suite: string; engine: Engine
   const started = Date.now();
   const sandbox = await createSandbox(o.sandboxKind);
   try {
-    const source = task.repo.startsWith("fixture:") ? await materializeFixture(task.repo.slice(8)) : task.repo;
+    const source = await resolveSource(task.repo);
     const baseSha = await checkoutRepo(sandbox, source, task.baseCommit);
     const detected = detectRepoConfig(sandbox.hostWorkdir);
     const cfg = {
