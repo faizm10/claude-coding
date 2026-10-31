@@ -38,7 +38,8 @@ describe.skipIf(!hasFfmpeg || !hasBrowser)("proof video pipeline", () => {
         narrationText({ issueTitle: "Save button does nothing", summary: "The click handler was never bound", testFiles: ["t.test.js"], sourceFiles: ["src/save.js"] }),
         dir,
       );
-      const media = await renderMedia(rec.video!, voice, dir);
+      const before = await recordProof(script, url, dir, { name: "before", label: { text: "BEFORE", color: "#d1495b" } });
+      const media = await renderMedia({ before: before.video, after: rec.video! }, voice, dir);
       expect(media.mp4 && existsSync(media.mp4)).toBe(true);
       expect(media.gif && existsSync(media.gif)).toBe(true);
     } finally {

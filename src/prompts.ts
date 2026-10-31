@@ -55,7 +55,7 @@ Create the file ghost-proof/proof.mjs (ES module) exporting:
 where \`page\` is a Playwright Page and the app is already running at baseUrl (${url}).
 - Navigate to the relevant screen and perform the steps from the issue.
 - Pause about 800ms between steps (await page.waitForTimeout(800)) so a human can follow the video.
-- Throw an Error if the fixed behavior is not visible.
+- Perform ALL the steps first and only check the result at the very end (throw an Error there if the fixed behavior is not visible). The same script is also recorded on the original buggy code for a before/after comparison, so it must not stop early on intermediate checks.
 - Only create that one file. Do not modify anything else and do not start servers.
 Reply with: PROOF: <one sentence describing what the video shows>`;
 }

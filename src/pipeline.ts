@@ -118,25 +118,43 @@ async function prove(o: { engine: Engine; store: Store; runId: number; sandbox: 
     log("  (no proof script written; skipping video)");
     return undefined;
   }
-  const stop = await startApp(sandbox, cfg.prove.start);
-  try {
-    if (!(await waitForUrl(cfg.prove.url, cfg.prove.readyTimeoutSec ?? 90))) {
-      log("  (app never came up; skipping video)");
-      return undefined;
+  const record = async (name: string, label: { text: string; color: string }) => {
+    const stop = await startApp(sandbox, cfg.prove!.start);
+    try {
+      if (!(await waitForUrl(cfg.prove!.url, cfg.prove!.readyTimeoutSec ?? 90))) return { ok: false, error: "app never came up" };
+      return await recordProof(script, cfg.prove!.url, outDir, { name, label });
+    } finally {
+      await stop();
     }
-    const rec = await recordProof(script, cfg.prove.url, outDir);
-    store.addEvent(runId, "prove", { type: "proof", ok: rec.ok, error: rec.error });
-    if (!rec.video) return undefined;
-    const voice = await narrate(
-      narrationText({ issueTitle: o.issue.title, issueRef: o.issue.ref, summary: o.summary, testFiles: o.gate.testFiles, sourceFiles: o.gate.sourceFiles }),
-      outDir,
-    );
-    const media = await renderMedia(rec.video, voice, outDir);
-    store.update(runId, { video_path: media.mp4 ?? rec.video });
-    return { ...media, walkthroughOk: rec.ok };
-  } finally {
-    await stop();
+  };
+
+  // BEFORE: the same walkthrough on the original code (the proof script itself
+  // is git-excluded, so stashing the fix leaves it in place).
+  let before: string | undefined;
+  const stash = await hostGit(sandbox, ["stash", "push", "--include-untracked", "-q", "-m", "ghost-before"]);
+  if (stash.code === 0) {
+    try {
+      const rec = await record("before", { text: "BEFORE", color: "#d1495b" });
+      before = rec.video;
+      store.addEvent(runId, "prove", { type: "proof", side: "before", ok: rec.ok, error: rec.error });
+    } finally {
+      await hostGit(sandbox, ["stash", "pop", "-q"]);
+    }
   }
+
+  const after = await record("after", { text: "AFTER ✓", color: "#1f8a4c" });
+  store.addEvent(runId, "prove", { type: "proof", side: "after", ok: after.ok, error: after.error });
+  if (!after.video) {
+    log(`  (proof recording failed: ${after.error ?? "unknown"}; skipping video)`);
+    return undefined;
+  }
+  const voice = await narrate(
+    narrationText({ issueTitle: o.issue.title, issueRef: o.issue.ref, summary: o.summary, testFiles: o.gate.testFiles, sourceFiles: o.gate.sourceFiles, sideBySide: Boolean(before) }),
+    outDir,
+  );
+  const media = await renderMedia({ before, after: after.video }, voice, outDir);
+  store.update(runId, { video_path: media.mp4 ?? after.video });
+  return { ...media, walkthroughOk: after.ok };
 }
 
 export function prBody(o: { issue: Issue; engine: string; summary: string; gate: GateResult; gifUrl?: string; mp4Url?: string; stats: { durationMs: number; inputTokens: number; outputTokens: number } }): string {
