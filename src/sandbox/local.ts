@@ -24,7 +24,8 @@ export class LocalSandbox implements Sandbox {
   }
 
   exec(command: string, opts: { timeoutMs?: number; env?: Record<string, string> } = {}): Promise<ExecResult> {
-    return runProc("bash", ["-lc", command], { cwd: this.hostWorkdir, timeoutMs: opts.timeoutMs, env: opts.env });
+    // Non-login shell: inherit the caller's PATH/toolchain instead of re-reading profiles.
+    return runProc("bash", ["-c", command], { cwd: this.hostWorkdir, timeoutMs: opts.timeoutMs, env: opts.env });
   }
 
   command(program: string, args: string[]) {
