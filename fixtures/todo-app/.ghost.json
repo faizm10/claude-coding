@@ -1,0 +1,5 @@
+{
+  "test": "npm test",
+  "maxMinutes": 15,
+  "prove": { "start": "PORT=4173 node server.js", "url": "http://localhost:4173", "readyTimeoutSec": 20 }
+}
