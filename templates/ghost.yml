@@ -34,7 +34,7 @@ jobs:
 
       - name: Install Ghost Engineer and Claude Code
         run: |
-          npm install -g @anthropic-ai/claude-code github:faizm10/ghost-engineer
+          npm install -g @anthropic-ai/claude-code github:faizm10/claude-coding
           sudo apt-get update -q && sudo apt-get install -y -q ffmpeg espeak-ng
           npx --yes playwright install --with-deps chromium
 

@@ -180,7 +180,7 @@ ${fence(gate.afterOutput)}
 </details>
 
 ---
-👻 Opened by [Ghost Engineer](https://github.com/faizm10/ghost-engineer), an AI agent (${o.engine}), in ${Math.round(o.stats.durationMs / 60000)} min using ${(o.stats.inputTokens + o.stats.outputTokens).toLocaleString("en-US")} tokens. A human should review this before merging.
+👻 Opened by [Ghost Engineer](https://github.com/faizm10/claude-coding), an AI agent (${o.engine}), in ${Math.round(o.stats.durationMs / 60000)} min using ${(o.stats.inputTokens + o.stats.outputTokens).toLocaleString("en-US")} tokens. A human should review this before merging.
 `;
 }
 
