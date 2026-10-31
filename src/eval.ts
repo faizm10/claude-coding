@@ -156,7 +156,8 @@ export interface EngineReport {
   medianMinutes: number;
   p95Minutes: number;
   avgTokens: number;
-  costUsd: number;
+  /** null when the engine doesn't report cost (Codex). */
+  costUsd: number | null;
   outcomes: Record<string, number>;
 }
 
@@ -193,7 +194,7 @@ export function buildReport(runs: RunRow[]): EngineReport[] {
       medianMinutes: percentile(minutes, 50),
       p95Minutes: percentile(minutes, 95),
       avgTokens: rs.length ? rs.reduce((s, r) => s + r.input_tokens + r.output_tokens, 0) / rs.length : 0,
-      costUsd: rs.reduce((s, r) => s + (r.cost_usd ?? 0), 0),
+      costUsd: rs.some((r) => r.cost_usd != null && r.cost_usd > 0) ? rs.reduce((s, r) => s + (r.cost_usd ?? 0), 0) : null,
       outcomes,
     };
   });
@@ -202,7 +203,7 @@ export function buildReport(runs: RunRow[]): EngineReport[] {
 export function reportMarkdown(suite: string, report: EngineReport[]): string {
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
   const rows = report
-    .map((r) => `| ${r.engine} | ${r.resolved}/${r.tasks} | **${pct(r.resolveRate)}** | ${pct(r.gatePassRate)} | ${r.medianMinutes.toFixed(1)} | ${r.p95Minutes.toFixed(1)} | ${Math.round(r.avgTokens).toLocaleString("en-US")} | $${r.costUsd.toFixed(2)} |`)
+    .map((r) => `| ${r.engine} | ${r.resolved}/${r.tasks} | **${pct(r.resolveRate)}** | ${pct(r.gatePassRate)} | ${r.medianMinutes.toFixed(1)} | ${r.p95Minutes.toFixed(1)} | ${Math.round(r.avgTokens).toLocaleString("en-US")} | ${r.costUsd == null ? "—" : `$${r.costUsd.toFixed(2)}`} |`)
     .join("\n");
   const outcomeKeys = [...new Set(report.flatMap((r) => Object.keys(r.outcomes)))].sort();
   const outcomeRows = outcomeKeys.map((k) => `| ${k} | ${report.map((r) => r.outcomes[k] ?? 0).join(" | ")} |`).join("\n");
