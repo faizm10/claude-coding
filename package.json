@@ -1,0 +1,36 @@
+{
+  "name": "ghost-engineer",
+  "version": "0.1.0",
+  "description": "Label a GitHub issue `ghost` and wake up to a tested PR with a narrated video of the fix. Runs on your Claude Code or Codex plan.",
+  "type": "module",
+  "bin": {
+    "ghost": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "fixtures",
+    "suites"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "prepare": "npm run build",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "sandbox:build": "docker build -t ghost-engineer-sandbox:latest docker/"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.64.1"
+  }
+}

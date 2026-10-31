@@ -1,0 +1,63 @@
+# Copy to .github/workflows/ghost.yml in the repo you want Ghost Engineer to work on.
+#
+# Setup (once):
+#   1. Run `claude setup-token` locally and save the token as the repo secret CLAUDE_CODE_OAUTH_TOKEN.
+#   2. Create a label named "ghost".
+# Then: label any issue "ghost" -> a draft PR with tests (and a proof video if .ghost.json has `prove`).
+name: Ghost Engineer
+
+on:
+  issues:
+    types: [labeled]
+  schedule:
+    - cron: "17 6 * * *" # nightly sweep for anything labeled earlier
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: ghost-engineer # one job at a time: they share one plan
+  cancel-in-progress: false
+
+jobs:
+  ghost:
+    if: github.event_name != 'issues' || github.event.label.name == 'ghost'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Ghost Engineer and Claude Code
+        run: |
+          npm install -g @anthropic-ai/claude-code github:faizm10/ghost-engineer
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg espeak-ng
+          npx --yes playwright install --with-deps chromium
+
+      - name: Fix labeled issues
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        # The runner VM is disposable, so the local sandbox is acceptable here.
+        # GH_TOKEN is scrubbed from the agent's and the repo's processes.
+        run: |
+          gh auth setup-git
+          git config --global user.name "ghost-engineer[bot]"
+          git config --global user.email "ghost-engineer@users.noreply.github.com"
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            ghost run "${{ github.event.issue.html_url }}" --pr --sandbox local
+          else
+            ghost watch --repo "${{ github.repository }}" --label ghost --once --pr --sandbox local --max-jobs 3
+          fi
+
+      - name: Upload traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghost-traces
+          path: .ghost/
+          retention-days: 14
